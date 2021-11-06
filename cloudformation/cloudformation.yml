@@ -1,0 +1,456 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: my cloudformation create
+
+Parameters:
+  AZ1a:
+    Description: Input a AZ where Public Subnet will be created.
+    Type: AWS::EC2::AvailabilityZone::Name
+  
+  AZ1c:
+    Description: Input a AZ where Public Subnet will be created.
+    Type: AWS::EC2::AvailabilityZone::Name
+  
+  KeyName:
+    Description: The EC2 Key Pair to allow SSH access to the instance
+    Type: "AWS::EC2::KeyPair::KeyName"
+  
+  MyIP:
+    Description: IP address allowed to access EC2
+    Type: String
+  
+  # スタック作成時にパラメータでホストゾーンID入力する
+  HostZoneId:
+    Description: host zone ID
+    Type: String
+
+  # スタック作成時にパラメータでドメイン名入力する
+  SubDomain:
+    Description: sub domain
+    Type: String
+
+  DBMasterUserName:
+    Description: DB master user name
+    Type: String
+
+  DBPassword:
+    Description: DB master user password
+    Type: String
+
+Resources:
+# VPC
+  myVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      Tags:
+        - Key: name
+          Value: mk-cfn
+
+# igw
+  IGW:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: name
+          Value: mk-cfn
+
+# igwをvpcにアタッチ
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref myVPC
+      InternetGatewayId: !Ref IGW
+
+# publicsubnet2つ
+# publicsubnet-1a
+  PublicSubnet1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Ref AZ1a
+      VpcId: !Ref myVPC
+      CidrBlock: 10.0.10.0/24
+      Tags:
+        - Key: name
+          Value: mk-cfn
+
+# publicsubnet-1c
+  PublicSubnet1c:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Ref AZ1c
+      VpcId: !Ref myVPC
+      CidrBlock: 10.0.20.0/24
+      Tags:
+        - Key: name
+          Value: mk-cfn
+
+# privatesubnet2つ
+# privatesubnet-1a
+  PrivateSubnet1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Ref AZ1a
+      VpcId: !Ref myVPC
+      CidrBlock: 10.0.100.0/24
+      Tags:
+        - Key: name
+          Value: mk-cfn
+
+# privatesubnet-1c
+  PrivateSubnet1c:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Ref AZ1c
+      VpcId: !Ref myVPC
+      CidrBlock: 10.0.200.0/24
+      Tags:
+        - Key: name
+          Value: mk-cfn
+
+# routetable
+# publicroutetable1a
+  PublicRouteTable1a:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref myVPC
+      Tags:
+        - Key: name
+          Value: mk-cfn
+
+# publicroutetable1c
+  PublicRouteTable1c:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref myVPC
+      Tags:
+        - Key: name
+          Value: mk-cfn
+
+# privateroutetable1a
+  PrivateRouteTable1a:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref myVPC
+      Tags:
+        - Key: name
+          Value: mk-cfn
+
+# privateroutetable1c
+  PrivateRouteTable1c:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref myVPC
+      Tags:
+        - Key: name
+          Value: mk-cfn
+
+# routing
+  PublicRoute1a:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PublicRouteTable1a
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref IGW
+  
+  PublicRoute1c:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PublicRouteTable1c
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref IGW
+
+# RouteTable Associate
+  PublicSubnet1aRouteTableAssociate:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1a
+      RouteTableId: !Ref PublicRouteTable1a
+
+  PublicSubnet1cRouteTableAssociate:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1c
+      RouteTableId: !Ref PublicRouteTable1c
+
+  PrivateSubnet1aRouteTableAssociate:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1a
+      RouteTableId: !Ref PrivateRouteTable1a
+
+  PrivateSubnet1cRouteTableAssociate:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1c
+      RouteTableId: !Ref PrivateRouteTable1c
+
+# albセキュリティグループ
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: alb-sg
+      GroupDescription: Allow port 80 and port 443
+      VpcId: !Ref myVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: name
+          Value: mk-cfn
+
+# ec2セキュリティグループ
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: EC2-sg
+      GroupDescription: Allow port from ALB and SSH only
+      VpcId: !Ref myVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref MyIP
+      Tags:
+        - Key: name
+          Value: mk-cfn
+
+# ec2を2つ
+  myEC2Instance1a:
+    Type: AWS::EC2::Instance
+    Properties:
+      KeyName: !Ref KeyName
+      DisableApiTermination: false
+      ImageId: ami-0701e21c502689c31
+      InstanceType: t2.micro
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeviceIndex: 0
+          SubnetId: !Ref PublicSubnet1a
+          GroupSet:
+            - !Ref EC2SecurityGroup
+      UserData: !Base64 |
+        #!/bin/bash -ex
+        # put your script here
+      Tags:
+        - Key: name
+          Value: mk-cfn
+
+  myEC2Instance1c:
+    Type: AWS::EC2::Instance
+    Properties:
+      KeyName: !Ref KeyName
+      DisableApiTermination: false
+      ImageId: ami-0701e21c502689c31
+      InstanceType: t2.micro
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeviceIndex: 0
+          SubnetId: !Ref PublicSubnet1c
+          GroupSet:
+            - !Ref EC2SecurityGroup
+      UserData: !Base64 |
+        #!/bin/bash -ex
+        # put your script here
+      Tags:
+        - Key: name
+          Value: mk-cfn
+
+# albの作成
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties: 
+      Name: ALB
+      SecurityGroups: 
+        - !Ref ALBSecurityGroup
+      Subnets: 
+        - !Ref PublicSubnet1a
+        - !Ref PublicSubnet1c
+      Tags: 
+        - Key: name
+          Value: mk-cfn
+      Type: application
+
+# ターゲットグループの作成
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties: 
+      # ヘルスチェックを有効にする
+      HealthCheckEnabled: true
+      # ヘルスチェックの実行間隔
+      HealthCheckIntervalSeconds: 30
+      # ヘルスチェック時の確認パス
+      HealthCheckPath: /
+      HealthCheckPort: 80
+      HealthCheckProtocol: HTTP
+      # ヘルスチェックのタイムアウト時間
+      HealthCheckTimeoutSeconds: 5
+      # ヘルスチェック失敗とみなすまでの回数
+      HealthyThresholdCount: 5
+      # ヘルスチェックで200コードが返ってくればOK
+      Matcher: 
+        HttpCode: 200
+      Name: ALBTargetgroup
+      # ALBがターゲットサーバーへトラフィックを送るときのポート。今回のEC2はHTTP通信しかできないので80ポートを指定
+      Port: 80
+      Protocol: HTTP
+      Tags: 
+        - Key: name
+          Value: mk-cfn
+      TargetGroupAttributes: 
+        - Key: deregistration_delay.timeout_seconds
+          Value: 300
+        - Key: stickiness.enabled
+          Value: false
+        - Key: stickiness.type
+          Value: lb_cookie
+        - Key: stickiness.lb_cookie.duration_seconds
+          Value: 86400
+      Targets: 
+        - Id: !Ref myEC2Instance1a
+        - Id: !Ref myEC2Instance1c
+      TargetType: instance
+      UnhealthyThresholdCount: 2
+      VpcId: !Ref myVPC
+
+# HTTP通信のリスナー設定
+  HTTPListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties: 
+      DefaultActions: 
+        - TargetGroupArn: !Ref ALBTargetGroup
+          Type: forward
+      LoadBalancerArn: !Ref ALB
+      Port: 80
+      Protocol: HTTP
+
+# HTTPS通信のリスナー設定
+  HTTPSListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties: 
+      DefaultActions: 
+        - TargetGroupArn: !Ref ALBTargetGroup
+          Type: forward
+      LoadBalancerArn: !Ref ALB
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !Ref ACM
+
+# elbのdns名をレコードに追加
+  route53RS:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      # ここにはパラメータで入力したドメイン名が入る
+      Name: !Sub ${SubDomain}
+      Comment: DNS for ALB
+      Type: A
+      AliasTarget: 
+        HostedZoneId: !GetAtt ALB.CanonicalHostedZoneID
+        DNSName: !GetAtt ALB.DNSName
+      # ここにはパラメータで入力したホストゾーンIDが入る
+      HostedZoneId: !Sub ${HostZoneId}
+
+# acmで証明書を取得
+  ACM:
+    Type: AWS::CertificateManager::Certificate
+    Properties: 
+      DomainName: !Sub ${SubDomain}
+      DomainValidationOptions: 
+        - DomainName: !Sub ${SubDomain}
+          HostedZoneId: !Sub ${HostZoneId}
+      ValidationMethod: DNS
+
+# rdsセキュリティグループ
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: RDS-sg
+      GroupDescription: Allow port from EC2 only
+      VpcId: !Ref myVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref EC2SecurityGroup
+      Tags:
+        - Key: name
+          Value: mk-cfn
+
+# rds
+  rdsDBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      AllocatedStorage: 20
+      DBInstanceClass: db.t2.micro
+      AllowMajorVersionUpgrade: false
+      AutoMinorVersionUpgrade: false
+      # AvailabilityZone: !Ref AZ1a
+      BackupRetentionPeriod: 0
+      DBName: mkDatabase
+      DBParameterGroupName: !Ref rdsDBParameterGroup
+      # DBSecurityGroups: 
+      #   - !Ref RDSSecurityGroup
+      DBSubnetGroupName: !Ref rdsDBSubnetGroup
+      Engine: mysql
+      EngineVersion: 8.0.23
+      MasterUsername: !Ref DBMasterUserName
+      MasterUserPassword: !Ref DBPassword
+      MultiAZ: true
+      Port: 3306
+      PreferredBackupWindow: 19:00-19:30
+      PreferredMaintenanceWindow: sat:20:00-sat:20:30
+      PubliclyAccessible: false
+      StorageType: gp2
+      VPCSecurityGroups:
+        - !Ref RDSSecurityGroup
+      Tags:
+        - Key: name
+          Value: mk-cfn
+
+# パラメータグループ
+  rdsDBParameterGroup:
+    Type: AWS::RDS::DBParameterGroup
+    Properties:
+      Description: RDS parameter group
+      Family: mysql8.0
+      Tags:
+        - Key: name
+          Value: mk-cfn
+  
+# サブネットグループ
+  rdsDBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: RDS subnet group
+      SubnetIds:
+        - !Ref PrivateSubnet1a
+        - !Ref PrivateSubnet1c
+      Tags:
+        - Key: name
+          Value: mk-cfn
+
+Outputs:
+  # ELBのDNSNameをアウトプット
+  ALBDNSName:
+    # Type: AWS::ElasticLoadBalancingV2::LoadBalancerのリソースからDNSNameをアプトプット
+    Value: !GetAtt ALB.DNSName
+    Export:
+      Name: alb-dnsname 
+
+  # ELBのCanonicalHostedZoneIDをアウトプット
+  ALBHostedZoneID:
+    # Type: AWS::ElasticLoadBalancingV2::LoadBalancerのリソースからCanonicalHostedZoneIDをアウトプット
+    Value: !GetAtt ALB.CanonicalHostedZoneID
+    Export:
+      Name: alb-hostzoneid
